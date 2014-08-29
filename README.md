@@ -23,7 +23,7 @@ Installation
 Pretty simple!
 
 ```
-$ go install oakwilson.com/p/jikan
+$ go get oakwilson.com/p/jikan && go install oakwilson.com/p/jikan
 ```
 
 CLI Usage
