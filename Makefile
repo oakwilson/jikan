@@ -1,6 +1,6 @@
 all: jikan
 
-jikan: **/*.go
+jikan: *.go **/*.go
 	go build -o jikan
 
 demo: jikan
