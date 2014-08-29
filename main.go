@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/codegangsta/cli"
-	"oakwilson.com/p/jikan"
+	"oakwilson.com/p/jikan/core"
 )
 
 func exportAction(c *cli.Context) {

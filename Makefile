@@ -1,7 +1,7 @@
 all: jikan
 
 jikan: **/*.go
-	go build -o jikan ./cli
+	go build -o jikan
 
 demo: jikan
 	dd if=/dev/zero of=demo/demo.db bs=1m count=1
