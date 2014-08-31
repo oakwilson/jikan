@@ -40,12 +40,13 @@ VERSION:
    0.0.0
 
 COMMANDS:
-   export Export the contents of a database
-   import Import content to a database
-   help, h  Shows a list of commands or help for one command
+   export, e  Export the contents of a database
+   import, i  Import content to a database
+   help, h    Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
-   --help, -h   show help
+   --debug, -d    enable debug logging
+   --help, -h     show help
    --version, -v  print the version
 ```
 

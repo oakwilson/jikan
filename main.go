@@ -141,20 +141,22 @@ func main() {
 	app.Usage = "Jikan time-series database tool"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
-			Name:  "debug",
+			Name:  "debug, d",
 			Usage: "enable debug logging",
 		},
 	}
 	app.Commands = []cli.Command{
 		{
-			Name:   "export",
-			Usage:  "Export the contents of a database",
-			Action: exportAction,
+			Name:      "export",
+			ShortName: "e",
+			Usage:     "Export the contents of a database",
+			Action:    exportAction,
 		},
 		{
-			Name:   "import",
-			Usage:  "Import content to a database",
-			Action: importAction,
+			Name:      "import",
+			ShortName: "i",
+			Usage:     "Import content to a database",
+			Action:    importAction,
 		},
 	}
 
