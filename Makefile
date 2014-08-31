@@ -4,9 +4,8 @@ jikan: *.go **/*.go
 	go build -o jikan
 
 demo: jikan
-	dd if=/dev/zero of=demo/demo.db bs=1m count=1
-	./jikan import demo/demo.db demo/demo.csv
-	./jikan export demo/demo.db
+	./jikan import demo/demo.db demo-stream demo/demo.csv
+	./jikan export demo/demo.db demo-stream
 
 clean:
 	rm -f jikan demo/demo.db

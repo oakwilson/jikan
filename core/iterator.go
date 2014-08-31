@@ -1,15 +1,16 @@
 package jikan
 
 import (
-	"bytes"
 	"encoding/binary"
-	"io"
 	"time"
+
+	"github.com/demizer/go-elog"
 )
 
 type Iterator struct {
-	s *Series
-	r io.ByteReader
+	str *Stream
+	idx int
+	pos int
 
 	good bool
 
@@ -20,38 +21,51 @@ type Iterator struct {
 	Value int64
 }
 
-func NewIterator(s *Series) *Iterator {
-	return &Iterator{
-		s: s,
-		r: bytes.NewReader(s.data[0:s.offset]),
+func NewIterator(s *Stream) *Iterator {
+	log.Debugf("constructing new iterator\n")
+
+	i := Iterator{
+		str:  s,
+		good: true,
 	}
+
+	i.Next()
+
+	return &i
 }
 
 func (i *Iterator) Next() error {
-	tdelta, err := binary.ReadVarint(i.r)
-	if err != nil {
+START:
+	if i.idx >= len(i.str.chain) {
 		i.good = false
 
-		if err == io.EOF {
-			return nil
-		} else {
-			return err
-		}
+		return nil
 	}
 
-	vdelta, err := binary.ReadVarint(i.r)
-	if err != nil {
-		i.good = false
+	blk := i.str.chain[i.idx]
 
-		if err == io.EOF {
-			return nil
-		} else {
-			return err
-		}
+	log.Debugf("moving to next item\n")
+	log.Debugf("idx %d, pos %d/%d/%d, good %#v\n", i.idx, i.pos, blk.used, blk.length, i.good)
+
+	if uint32(i.pos) == blk.used {
+		i.idx++
+		i.pos = 0
+
+		i.Time = time.Time{}
+		i.Value = 0
+
+		// can't just fall through here, in case the next block has been allocated
+		// but is also empty. weird edge case, but it's possible...
+		goto START
 	}
+
+	tdelta, n := binary.Varint(blk.db.mm[blk.position+93+uint64(i.pos) : blk.position+93+uint64(blk.used)])
+	i.pos += n
+	vdelta, n := binary.Varint(blk.db.mm[blk.position+93+uint64(i.pos) : blk.position+93+uint64(blk.used)])
+	i.pos += n
 
 	if i.Time.IsZero() {
-		i.Time = time.Unix(tdelta/int64(time.Second), tdelta%int64(time.Second))
+		i.Time = time.Unix(tdelta/int64(time.Millisecond), tdelta%int64(time.Millisecond))
 	} else {
 		i.Time = i.Time.Add(time.Duration(tdelta))
 	}
