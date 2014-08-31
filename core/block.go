@@ -91,6 +91,12 @@ func (b *block) add(t time.Time, v int64) error {
 	td := t.Sub(b.time)
 	vd := v - b.value
 
+	log.Debugf("time delta %d, value delta %d\n", td, vd)
+
+	if td < 0 {
+		return stackerr.New("datapoint violates time ordering")
+	}
+
 	u := 0
 	var buf [32]byte
 	u += binary.PutVarint(buf[u:], int64(td)/1000)
