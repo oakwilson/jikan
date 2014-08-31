@@ -15,7 +15,9 @@ in areas that the author deemed unimportant.
 Jikan is specifically designed to store very long runs of time/integer pairs. In
 the representation that it uses, times and values are stored as deltas against
 the previous entry. They are also stored as variable-width integers, allowing a
-small change in value to translate to a small entry on-disk.
+small change in value to translate to a small entry on-disk. In the future, it's
+planned that Jikan will support run-length encoding on these deltas and values,
+enabling significant space savings, even compared to its current strategy.
 
 Installation
 ------------
