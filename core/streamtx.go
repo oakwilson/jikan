@@ -21,9 +21,15 @@ func (s *StreamTx) Add(t time.Time, v int64) error {
 func (s *StreamTx) Commit() error {
 	defer s.s.Unlock()
 
-	if err := s.s.head.WriteAndSwapHeader(); err != nil {
+	if err := s.s.head.writeAndSwapHeader(); err != nil {
 		return stackerr.Wrap(err)
 	} else {
 		return nil
 	}
+}
+
+func (s *StreamTx) Cancel() error {
+	s.s.Unlock()
+
+	return nil
 }

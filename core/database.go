@@ -106,7 +106,7 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) WriteAndSwapHeader() error {
+func (db *Database) writeAndSwapHeader() error {
 	log.Debugf("writing/swapping database header\n")
 
 	db.Lock()
@@ -126,7 +126,7 @@ func (db *Database) WriteAndSwapHeader() error {
 	return db.mm.Flush()
 }
 
-func (db *Database) WithLock(fn func() error) error {
+func (db *Database) withLock(fn func() error) error {
 	db.Lock()
 	defer db.Unlock()
 
@@ -152,7 +152,7 @@ func (db *Database) Stream(name []byte) (*Stream, error) {
 		return stream, nil
 	}
 
-	if stream, err := NewStream(db, id); err != nil {
+	if stream, err := newStream(db, id); err != nil {
 		return nil, stackerr.Wrap(err)
 	} else {
 		db.streams[id] = stream
@@ -161,17 +161,17 @@ func (db *Database) Stream(name []byte) (*Stream, error) {
 	}
 }
 
-func (db *Database) getBlock(position uint64) (*Block, error) {
+func (db *Database) getBlock(position uint64) (*block, error) {
 	log.Debugf("getting block at %d\n", position)
 
-	if block, err := NewBlock(db, position); err != nil {
+	if b, err := newBlock(db, position); err != nil {
 		return nil, stackerr.Wrap(err)
 	} else {
-		return block, nil
+		return b, nil
 	}
 }
 
-func (db *Database) newBlock(size uint32) (*Block, error) {
+func (db *Database) newBlock(size uint32) (*block, error) {
 	log.Debugf("creating block of %d bytes\n", size)
 
 	position, err := db.allocate(93 + uint64(size))
@@ -187,14 +187,14 @@ func (db *Database) newBlock(size uint32) (*Block, error) {
 
 	binary.BigEndian.PutUint32(db.mm[position:position+4], size)
 
-	if block, err := db.getBlock(position); err != nil {
+	if b, err := db.getBlock(position); err != nil {
 		return nil, stackerr.Wrap(err)
 	} else {
-		return block, nil
+		return b, nil
 	}
 }
 
-func (db *Database) getRoot(id [20]byte) (*Block, error) {
+func (db *Database) getRoot(id [20]byte) (*block, error) {
 	log.Debugf("getting root block `%x'\n", id)
 
 	if position, ok := db.roots[id]; ok {
@@ -213,7 +213,7 @@ func (db *Database) getRoot(id [20]byte) (*Block, error) {
 		} else {
 			db.roots[id] = root.position
 
-			if err := db.WriteAndSwapHeader(); err != nil {
+			if err := db.writeAndSwapHeader(); err != nil {
 				return nil, stackerr.Wrap(err)
 			}
 

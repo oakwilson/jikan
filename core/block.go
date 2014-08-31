@@ -10,7 +10,7 @@ import (
 	"github.com/facebookgo/stackerr"
 )
 
-type Block struct {
+type block struct {
 	sync.Mutex
 
 	db       *Database
@@ -29,10 +29,10 @@ var (
 	ERR_BLOCK_FULL = errors.New("no space left")
 )
 
-func NewBlock(db *Database, position uint64) (*Block, error) {
+func newBlock(db *Database, position uint64) (*block, error) {
 	log.Debugf("constructing new block at %d\n", position)
 
-	b := Block{
+	b := block{
 		db:       db,
 		position: position,
 	}
@@ -52,7 +52,7 @@ func NewBlock(db *Database, position uint64) (*Block, error) {
 	return &b, nil
 }
 
-func (b *Block) Tx(fn func() error) error {
+func (b *block) tx(fn func() error) error {
 	b.Lock()
 	defer b.Unlock()
 
@@ -60,14 +60,14 @@ func (b *Block) Tx(fn func() error) error {
 		return stackerr.Wrap(err)
 	}
 
-	if err := b.WriteAndSwapHeader(); err != nil {
+	if err := b.writeAndSwapHeader(); err != nil {
 		return stackerr.Wrap(err)
 	}
 
 	return nil
 }
 
-func (b *Block) WriteAndSwapHeader() error {
+func (b *block) writeAndSwapHeader() error {
 	log.Debugf("writing/swapping block header\n")
 
 	b.Lock()
@@ -87,7 +87,7 @@ func (b *Block) WriteAndSwapHeader() error {
 	return b.db.mm.Flush()
 }
 
-func (b *Block) add(t time.Time, v int64) error {
+func (b *block) add(t time.Time, v int64) error {
 	td := t.Sub(b.time)
 	vd := v - b.value
 
@@ -109,7 +109,7 @@ func (b *Block) add(t time.Time, v int64) error {
 	return nil
 }
 
-func (b *Block) readHeader(page uint8) error {
+func (b *block) readHeader(page uint8) error {
 	o := int(b.position) + 5 + int(page*12)
 
 	log.Debugf("reading block header from page %d (offset %d/0x%x)\n", page, o, o)
@@ -129,7 +129,7 @@ func (b *Block) readHeader(page uint8) error {
 	return nil
 }
 
-func (b *Block) writeHeader(page uint8) error {
+func (b *block) writeHeader(page uint8) error {
 	o := int(b.position) + 5 + int(page*12)
 
 	log.Debugf("writing block header to page %d (offset %d/0x%x)\n", page, o, o)

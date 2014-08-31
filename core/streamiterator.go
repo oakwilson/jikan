@@ -7,7 +7,7 @@ import (
 	"github.com/demizer/go-elog"
 )
 
-type Iterator struct {
+type StreamIterator struct {
 	str *Stream
 	idx int
 	pos int
@@ -21,10 +21,10 @@ type Iterator struct {
 	Value int64
 }
 
-func NewIterator(s *Stream) *Iterator {
+func newStreamIterator(s *Stream) *StreamIterator {
 	log.Debugf("constructing new iterator\n")
 
-	i := Iterator{
+	i := StreamIterator{
 		str:  s,
 		good: true,
 	}
@@ -34,7 +34,7 @@ func NewIterator(s *Stream) *Iterator {
 	return &i
 }
 
-func (i *Iterator) Next() error {
+func (i *StreamIterator) Next() error {
 START:
 	if i.idx >= len(i.str.chain) {
 		i.good = false
@@ -77,18 +77,18 @@ START:
 	return nil
 }
 
-func (i *Iterator) From(t time.Time) *Iterator {
+func (i *StreamIterator) From(t time.Time) *StreamIterator {
 	i.from = t
 
 	return i
 }
 
-func (i *Iterator) To(t time.Time) *Iterator {
+func (i *StreamIterator) To(t time.Time) *StreamIterator {
 	i.to = t
 
 	return i
 }
 
-func (i *Iterator) Good() bool {
+func (i *StreamIterator) Good() bool {
 	return i.good
 }

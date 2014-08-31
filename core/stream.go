@@ -13,11 +13,11 @@ type Stream struct {
 
 	id    [20]byte
 	db    *Database
-	head  *Block
-	chain []*Block
+	head  *block
+	chain []*block
 }
 
-func NewStream(db *Database, id [20]byte) (*Stream, error) {
+func newStream(db *Database, id [20]byte) (*Stream, error) {
 	log.Debugf("creating stream `%x'\n", id)
 
 	head, err := db.getRoot(id)
@@ -27,7 +27,7 @@ func NewStream(db *Database, id [20]byte) (*Stream, error) {
 
 	log.Debugf("getting block chain\n")
 
-	chain := []*Block{head}
+	chain := []*block{head}
 
 	for head.next != 0 {
 		log.Debugf("... next block is at %d\n", head.next)
@@ -61,6 +61,10 @@ func (s *Stream) WithTx(fn func(t *StreamTx) error) error {
 	t := s.Tx()
 
 	if err := fn(t); err != nil {
+		if err := t.Cancel(); err != nil {
+			return stackerr.Wrap(err)
+		}
+
 		return stackerr.Wrap(err)
 	}
 
@@ -71,8 +75,8 @@ func (s *Stream) WithTx(fn func(t *StreamTx) error) error {
 	}
 }
 
-func (s *Stream) Iterator() *Iterator {
-	return NewIterator(s)
+func (s *Stream) Iterator() *StreamIterator {
+	return newStreamIterator(s)
 }
 
 func (s *Stream) add(t time.Time, v int64) error {
@@ -90,7 +94,7 @@ func (s *Stream) add(t time.Time, v int64) error {
 	}
 
 	s.head.next = next.position
-	if err := s.head.WriteAndSwapHeader(); err != nil {
+	if err := s.head.writeAndSwapHeader(); err != nil {
 		return stackerr.Wrap(err)
 	}
 
