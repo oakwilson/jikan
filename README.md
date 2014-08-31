@@ -19,8 +19,8 @@ small change in value to translate to a small entry on-disk. In the future, it's
 planned that Jikan will support run-length encoding on these deltas and values,
 enabling significant space savings, even compared to its current strategy.
 
-Jikan is also designed first and foremost with a very modular design, allowing
-it to be embedded easily into other applications. You can see the API
+Jikan is also designed first and foremost with a very modular architecture,
+allowing it to be embedded easily into other applications. You can see the API
 documentation here:
 
 [http://godoc.org/oakwilson.com/p/jikan/core](http://godoc.org/oakwilson.com/p/jikan/core)
