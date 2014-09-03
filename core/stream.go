@@ -11,14 +11,14 @@ import (
 type Stream struct {
 	sync.Mutex
 
-	id    [20]byte
+	id    []byte
 	db    *Database
 	head  *block
 	chain []*block
 }
 
-func newStream(db *Database, id [20]byte) (*Stream, error) {
-	log.Debugf("creating stream `%x'\n", id)
+func newStream(db *Database, id []byte) (*Stream, error) {
+	log.Debugf("creating stream `%s'\n", id)
 
 	head, err := db.getRoot(id)
 	if err != nil {

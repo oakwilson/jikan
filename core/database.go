@@ -1,7 +1,7 @@
 package jikan
 
 import (
-	"crypto/sha1"
+	"bytes"
 	"encoding/binary"
 	"os"
 	"sync"
@@ -13,6 +13,16 @@ import (
 
 const MINIMUM_HEADER_LENGTH = 33
 
+type dbRoot struct {
+	id       []byte
+	position uint64
+}
+
+type dbStream struct {
+	id     []byte
+	stream *Stream
+}
+
 type Database struct {
 	sync.RWMutex
 
@@ -20,11 +30,12 @@ type Database struct {
 	fd       *os.File
 	mm       mmap.MMap
 
-	page    uint8
-	index   uint64
-	used    uint64
-	roots   map[[20]byte]uint64
-	streams map[[20]byte]*Stream
+	page  uint8
+	index uint64
+	used  uint64
+
+	roots   []*dbRoot
+	streams []*dbStream
 }
 
 func Open(filename string) (*Database, error) {
@@ -50,9 +61,8 @@ func Open(filename string) (*Database, error) {
 	}
 
 	db := Database{
-		fd:      fd,
-		mm:      mm,
-		streams: make(map[[20]byte]*Stream),
+		fd: fd,
+		mm: mm,
 	}
 
 	page := mm[0]
@@ -78,14 +88,14 @@ func (db *Database) Close() error {
 	log.Debugf("adding locks for open streams\n")
 
 	for _, s := range db.streams {
-		log.Debugf("locking stream `%x'...\n", s.id)
+		log.Debugf("locking stream `%s'...\n", s.id)
 
 		wg.Add(1)
 		go func() {
-			s.Lock()
+			s.stream.Lock()
 			wg.Done()
 
-			log.Debugf("locked stream `%x'\n", s.id)
+			log.Debugf("locked stream `%s'\n", s.id)
 		}()
 	}
 
@@ -138,24 +148,26 @@ func (db *Database) withLock(fn func() error) error {
 }
 
 func (db *Database) Stream(name []byte) (*Stream, error) {
-	var id [20]byte
+	id := make([]byte, len(name))
+	copy(id, name)
 
-	h := sha1.New()
-	h.Write(name)
-	copy(id[:], h.Sum(nil))
+	log.Debugf("getting stream `%s'\n", id)
 
-	log.Debugf("getting stream `%s' (`%x')\n", name, id)
+	for _, s := range db.streams {
+		if bytes.Equal(s.id, name) {
+			log.Debugf("fetching cached stream\n")
 
-	if stream, ok := db.streams[id]; ok {
-		log.Debugf("fetching cached stream\n")
-
-		return stream, nil
+			return s.stream, nil
+		}
 	}
 
 	if stream, err := newStream(db, id); err != nil {
 		return nil, stackerr.Wrap(err)
 	} else {
-		db.streams[id] = stream
+		db.streams = append(db.streams, &dbStream{
+			id:     id,
+			stream: stream,
+		})
 
 		return stream, nil
 	}
@@ -194,31 +206,36 @@ func (db *Database) newBlock(size uint32) (*block, error) {
 	}
 }
 
-func (db *Database) getRoot(id [20]byte) (*block, error) {
-	log.Debugf("getting root block `%x'\n", id)
+func (db *Database) getRoot(id []byte) (*block, error) {
+	log.Debugf("getting root block `%s'\n", id)
 
-	if position, ok := db.roots[id]; ok {
-		log.Debugf("found root position: %d\n", position)
+	for _, r := range db.roots {
+		if bytes.Equal(r.id, id) {
+			log.Debugf("found root position: %d\n", r.position)
 
-		if root, err := db.getBlock(position); err != nil {
-			return nil, stackerr.Wrap(err)
-		} else {
-			return root, nil
-		}
-	} else {
-		log.Debugf("creating new root block\n")
-
-		if root, err := db.newBlock(32); err != nil {
-			return nil, stackerr.Wrap(err)
-		} else {
-			db.roots[id] = root.position
-
-			if err := db.writeAndSwapHeader(); err != nil {
+			if root, err := db.getBlock(r.position); err != nil {
 				return nil, stackerr.Wrap(err)
+			} else {
+				return root, nil
 			}
-
-			return root, nil
 		}
+	}
+
+	log.Debugf("creating new root block\n")
+
+	if root, err := db.newBlock(32); err != nil {
+		return nil, stackerr.Wrap(err)
+	} else {
+		db.roots = append(db.roots, &dbRoot{
+			id:       id,
+			position: root.position,
+		})
+
+		if err := db.writeAndSwapHeader(); err != nil {
+			return nil, stackerr.Wrap(err)
+		}
+
+		return root, nil
 	}
 }
 
@@ -244,39 +261,51 @@ func (db *Database) readHeader(page byte) error {
 	return nil
 }
 
-func (db *Database) readIndex(position uint64) (map[[20]byte]uint64, error) {
+func (db *Database) readIndex(position uint64) ([]*dbRoot, error) {
 	log.Debugf("reading index from %d\n", position)
 
-	roots := make(map[[20]byte]uint64)
-
 	if position == 0 {
-		return roots, nil
+		return nil, nil
 	}
 
 	if int(position) >= len(db.mm) {
 		return nil, stackerr.New("position was out of bounds")
 	}
 
-	length := int(binary.BigEndian.Uint32(db.mm[position : position+4]))
-	used := int(binary.BigEndian.Uint32(db.mm[position+4 : position+8]))
+	count := int(binary.BigEndian.Uint32(db.mm[position : position+4]))
 
-	log.Debugf("index is %d bytes long with %d bytes used\n", length, used)
+	roots := make([]*dbRoot, count, count)
 
-	if int(position)+used > len(db.mm) {
-		return nil, stackerr.New("index apparently overruns bounds")
-	}
+	o := int(position) + 4
+	for i := 0; i < count; i++ {
+		log.Debugf("reading root %d/%d from offset %d\n", i, count, o)
 
-	records := used / 28
+		if o >= len(db.mm) {
+			return nil, stackerr.New("stream id length overruns bounds")
+		}
+		streamIdSize := int(binary.BigEndian.Uint16(db.mm[o : o+2]))
 
-	for i := 0; i < records; i++ {
-		eoff := 8 + int(position) + i*28
+		log.Debugf("id size is %d\n", streamIdSize)
 
-		var k [20]byte
-		copy(k[0:20], db.mm[eoff:eoff+20])
+		if o+streamIdSize >= len(db.mm) {
+			return nil, stackerr.New("stream id overruns bounds")
+		}
+		streamId := make([]byte, streamIdSize)
+		copy(streamId, db.mm[o+2:o+2+streamIdSize])
 
-		log.Debugf("adding root `%x'\n", k)
+		if o >= len(db.mm) {
+			return nil, stackerr.New("stream position data overruns bounds")
+		}
+		streamPosition := binary.BigEndian.Uint64(db.mm[o+2+streamIdSize : o+2+streamIdSize+8])
 
-		roots[k] = binary.BigEndian.Uint64(db.mm[eoff+20 : eoff+28])
+		o += 2 + streamIdSize + 8
+
+		log.Debugf("adding root `%s' at %d\n", streamId, streamPosition)
+
+		roots[i] = &dbRoot{
+			id:       streamId,
+			position: streamPosition,
+		}
 	}
 
 	return roots, nil
@@ -302,14 +331,21 @@ func (db *Database) writeHeader(page byte) error {
 }
 
 func (db *Database) writeIndex(position uint64) (uint64, error) {
+	log.Debugf("writing database index to position %d\n", position)
+
+	requiredLength := 0
+	for _, r := range db.roots {
+		requiredLength += 2 + len(r.id) + 8
+	}
+
 	length := 0
 
 	if position != 0 {
 		length = int(binary.BigEndian.Uint32(db.mm[int(position) : int(position)+4]))
 	}
 
-	if length < len(db.roots)*28+8 {
-		length = len(db.roots)*28*2 + 8
+	if length < requiredLength+4 {
+		length = requiredLength + 4
 
 		if newPosition, err := db.allocate(uint64(length)); err != nil {
 			return 0, stackerr.Wrap(err)
@@ -319,19 +355,21 @@ func (db *Database) writeIndex(position uint64) (uint64, error) {
 	}
 
 	index := db.mm[int(position) : int(position)+length]
-	data := index[8:length]
 
-	i := 0
-	for k, v := range db.roots {
-		o := i * 28
-		record := data[o : o+28]
-		copy(record[0:20], k[0:20])
-		binary.BigEndian.PutUint64(record[20:28], v)
-		i++
+	log.Debugf("writing index root count of %d\n", len(db.roots))
+
+	binary.BigEndian.PutUint32(index[0:4], uint32(len(db.roots)))
+
+	o := 4
+	for _, v := range db.roots {
+		log.Debugf("writing root record `%s' at offset %d\n", v.id, o)
+
+		binary.BigEndian.PutUint16(index[o:o+2], uint16(len(v.id)))
+		copy(index[o+2:o+2+len(v.id)], v.id)
+		binary.BigEndian.PutUint64(index[o+2+len(v.id):o+2+len(v.id)+8], v.position)
+
+		o += 2 + len(v.id) + 8
 	}
-
-	binary.BigEndian.PutUint32(index[0:4], uint32(length))
-	binary.BigEndian.PutUint32(index[4:8], uint32(len(db.roots)*28))
 
 	return position, nil
 }
@@ -349,7 +387,7 @@ func (db *Database) allocate(size uint64) (uint64, error) {
 
 	db.used += size
 
-	log.Debugf("allocated at %d, total %d\n", size, db.used)
+	log.Debugf("allocated at %d, total %d\n", o, db.used)
 
 	return o, nil
 }
